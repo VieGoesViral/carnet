@@ -121,10 +121,29 @@ details.profil summary{cursor:pointer;font-family:var(--display);font-weight:700
 .check input{width:auto}
 .status{font-size:.8rem;color:var(--muted);text-align:right;margin-top:14px}
 @media (prefers-reduced-motion:reduce){.fill{transition:none}}
+.login-screen{position:fixed;inset:0;background:var(--paper);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50}
+.login-box{background:var(--surface);border-radius:var(--radius-lg);padding:32px;max-width:360px;width:100%;text-align:center}
+.login-box h1{font-size:1.4rem;margin:0 0 6px}
+.login-box p{color:var(--muted);font-size:.9rem;margin:0 0 18px}
+.login-box form{display:grid;gap:10px}
+.userbar{display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-bottom:8px;font-size:.85rem;color:var(--muted)}
+.userbar button{background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:inherit}
 </style>
 </head>
 <body>
-<main>
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <h1>Mon carnet kcal</h1>
+    <p>Entre ton pseudo pour accéder à ton espace personnel.</p>
+    <form id="loginForm">
+      <input id="loginPseudo" placeholder="Ton pseudo" autocomplete="username" required maxlength="30">
+      <button class="btn" type="submit">Entrer</button>
+      <p class="hint" id="loginStatus"></p>
+    </form>
+  </div>
+</div>
+<main id="app" hidden>
+  <div class="userbar"><span id="userLabel"></span><button id="logoutBtn" type="button">Changer de pseudo</button></div>
   <div class="top">
     <h1>Mon carnet kcal</h1>
     <div class="datenav">
@@ -288,7 +307,7 @@ details.profil summary{cursor:pointer;font-family:var(--display);font-weight:700
     history: {}
   };
 
-  // ---------- Stockage : base de l'artifact (privée) sinon navigateur ----------
+  // ---------- Stockage : base de l'artifact (privée), espace pseudo (remote), sinon navigateur ----------
   let db = null, uid = null, mode = 'local';
   const LS = {
     get(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } },
@@ -296,13 +315,27 @@ details.profil summary{cursor:pointer;font-family:var(--display);font-weight:700
   };
   const profileRef = () => db.doc('data/users/'+uid+'/profile');
   const daysCol = () => profileRef().collection('days');
+  async function remoteGet(key){
+    const r = await fetch(`/api/kv/${encodeURIComponent(uid)}/${encodeURIComponent(key)}`);
+    if(!r.ok) throw new Error('remote get failed');
+    const d = await r.json();
+    return d.value;
+  }
+  async function remoteSet(key, value){
+    const r = await fetch(`/api/kv/${encodeURIComponent(uid)}/${encodeURIComponent(key)}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ value })
+    });
+    if(!r.ok) throw new Error('remote set failed');
+  }
 
   async function loadProfile(){
     if(mode==='db'){ const s = await profileRef().get(); if(s.exists) Object.assign(state.profile, s.data()); }
+    else if(mode==='remote'){ try{ const p = await remoteGet('profile'); if(p) Object.assign(state.profile, p); }catch(e){} }
     else { const p = LS.get('kcal:profile'); if(p) Object.assign(state.profile, p); }
   }
   async function saveProfile(){
     if(mode==='db'){ try{ await profileRef().set({...state.profile}); }catch(e){ setStatus('Échec de la sauvegarde du profil.'); } }
+    else if(mode==='remote'){ try{ await remoteSet('profile', state.profile); }catch(e){ setStatus('Échec de la sauvegarde du profil.'); } }
     else LS.set('kcal:profile', state.profile);
   }
   async function loadDay(date){
@@ -310,6 +343,9 @@ details.profil summary{cursor:pointer;font-family:var(--display);font-weight:700
     if(mode==='db'){
       const s = await daysCol().doc(date).get();
       return s.exists ? {meals:s.data().meals||[], acts:s.data().acts||[]} : {meals:[], acts:[]};
+    }
+    if(mode==='remote'){
+      try{ const d = await remoteGet('day:'+date); return d || {meals:[], acts:[]}; }catch(e){ return {meals:[], acts:[]}; }
     }
     return LS.get('kcal:day:'+date) || {meals:[], acts:[]};
   }
@@ -319,6 +355,12 @@ details.profil summary{cursor:pointer;font-family:var(--display);font-weight:700
       try{
         const q = await daysCol().where('date','>=',start).where('date','<=',end).get();
         q.docs.forEach(d => { const v=d.data(); state.history[v.date] = {meals:v.meals||[], acts:v.acts||[]}; });
+      }catch(e){}
+    } else if(mode==='remote'){
+      try{
+        const r = await fetch(`/api/week/${encodeURIComponent(uid)}/${end}`);
+        const d = await r.json();
+        Object.assign(state.history, d.days||{});
       }catch(e){}
     } else {
       for(let i=0;i<7;i++){ const k=addDays(start,i); const v=LS.get('kcal:day:'+k); if(v) state.history[k]=v; }
@@ -334,11 +376,14 @@ details.profil summary{cursor:pointer;font-family:var(--display);font-weight:700
       if(mode==='db'){
         try{ await daysCol().doc(date).set({date, meals:data.meals, acts:data.acts}); setStatus(savedMsg()); }
         catch(e){ setStatus(e && e.code==='quota_exceeded' ? 'Espace plein : supprime d\'anciennes journées.' : 'Échec de l\'enregistrement, réessaie.'); }
+      } else if(mode==='remote'){
+        try{ await remoteSet('day:'+date, data); setStatus(savedMsg()); }
+        catch(e){ setStatus('Échec de l\'enregistrement, réessaie.'); }
       } else { LS.set('kcal:day:'+date, data); setStatus(savedMsg()); }
     }, 500);
     scheduleCoach();
   }
-  const savedMsg = () => mode==='db' ? 'Enregistré dans ton carnet' : 'Enregistré sur cet appareil';
+  const savedMsg = () => mode==='db' ? 'Enregistré dans ton carnet' : mode==='remote' ? `Enregistré dans l'espace de ${uid}` : 'Enregistré sur cet appareil';
   const clone = o => JSON.parse(JSON.stringify(o));
   function setStatus(t){ $('status').textContent = t; }
 
@@ -692,6 +737,33 @@ Réponds uniquement en JSON : {"kcal": entier, "explication": "une phrase courte
     }
   };
 
+  // ---------- Connexion par pseudo ----------
+  async function startRemote(pseudo){
+    uid = pseudo; mode = 'remote';
+    try{ localStorage.setItem('kcal:currentUser', pseudo); }catch(e){}
+    $('loginScreen').hidden = true; $('app').hidden = false;
+    $('userLabel').textContent = 'Connecté : '+pseudo;
+    try{ await loadProfile(); }catch(e){}
+    buildTypeSelect(); fillProfile(); syncActFields();
+    await goTo(state.date);
+    setStatus(savedMsg());
+  }
+  $('loginForm').onsubmit = async e=>{
+    e.preventDefault();
+    const raw = $('loginPseudo').value;
+    $('loginStatus').textContent = 'Connexion…';
+    try{
+      const r = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ pseudo: raw }) });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error || 'Erreur inconnue.');
+      await startRemote(d.pseudo);
+    }catch(err){ $('loginStatus').textContent = 'Erreur : '+err.message; }
+  };
+  $('logoutBtn').onclick = ()=>{
+    try{ localStorage.removeItem('kcal:currentUser'); }catch(e){}
+    location.reload();
+  };
+
   // ---------- Démarrage ----------
   buildTypeSelect(); fillProfile(); syncActFields(); render();
   (async ()=>{
@@ -699,14 +771,22 @@ Réponds uniquement en JSON : {"kcal": entier, "explication": "une phrase courte
       if(window.claude && typeof window.claude.use==='function'){
         const [d,u]=await Promise.all([window.claude.use('db'), window.claude.use('user')]);
         const id = u ? await u.id() : null;
-        if(d && id){ db=d; uid=id; mode='db'; }
-        window.claude.use('sample').then(sa=>{ if(sa){ sampleApi=sa; $('aiBtn').hidden=false; syncActFields(); } }).catch(()=>{});
+        if(d && id){
+          db=d; uid=id; mode='db';
+          window.claude.use('sample').then(sa=>{ if(sa){ sampleApi=sa; $('aiBtn').hidden=false; syncActFields(); } }).catch(()=>{});
+          $('loginScreen').hidden = true; $('app').hidden = false;
+          try{ await loadProfile(); }catch(e){}
+          buildTypeSelect(); fillProfile(); syncActFields();
+          await goTo(state.date);
+          setStatus('Tes données sont privées et gardées dans ton carnet.');
+          return;
+        }
       }
-    }catch(e){ mode='local'; }
-    try{ await loadProfile(); }catch(e){}
-    buildTypeSelect(); fillProfile(); syncActFields();
-    await goTo(state.date);
-    setStatus(mode==='db' ? 'Tes données sont privées et gardées dans ton carnet.' : 'Tes données sont gardées dans ce navigateur.');
+    }catch(e){}
+    let saved = null;
+    try{ saved = localStorage.getItem('kcal:currentUser'); }catch(e){}
+    if(saved){ await startRemote(saved); }
+    else { $('loginPseudo').focus(); }
   })();
 })();
 </script>

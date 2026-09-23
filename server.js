@@ -4,9 +4,108 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 app.use(express.json());
 app.use(express.static(__dirname));
+
+// ---------- Stockage utilisateur (Upstash Redis) ----------
+async function redisCmd(parts) {
+  const r = await fetch(`${REDIS_URL}/${parts.map(encodeURIComponent).join('/')}`, {
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
+  });
+  if (!r.ok) throw new Error('Erreur Redis: ' + (await r.text()));
+  const data = await r.json();
+  return data.result;
+}
+async function kvGet(key) {
+  const raw = await redisCmd(['get', key]);
+  if (raw == null) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+async function kvSet(key, value) {
+  await redisCmd(['set', key, JSON.stringify(value)]);
+}
+
+function sanitizePseudo(raw) {
+  return (raw || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9_-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 30);
+}
+
+function requireRedis(req, res, next) {
+  if (!REDIS_URL || !REDIS_TOKEN) return res.status(500).json({ error: 'Stockage non configuré sur le serveur.' });
+  next();
+}
+
+app.post('/api/login', requireRedis, (req, res) => {
+  const pseudo = sanitizePseudo(req.body && req.body.pseudo);
+  if (!pseudo) return res.status(400).json({ error: 'Pseudo invalide.' });
+  res.json({ pseudo });
+});
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function keyFor(pseudo, key) {
+  if (key === 'profile') return `u:${pseudo}:profile`;
+  const m = /^day:(\d{4}-\d{2}-\d{2})$/.exec(key);
+  if (m) return `u:${pseudo}:day:${m[1]}`;
+  return null;
+}
+
+app.get('/api/kv/:pseudo/:key', requireRedis, async (req, res) => {
+  const pseudo = sanitizePseudo(req.params.pseudo);
+  const redisKey = keyFor(pseudo, req.params.key);
+  if (!pseudo || !redisKey) return res.status(400).json({ error: 'Requête invalide.' });
+  try {
+    const value = await kvGet(redisKey);
+    res.json({ value });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Erreur de lecture.' });
+  }
+});
+
+app.put('/api/kv/:pseudo/:key', requireRedis, async (req, res) => {
+  const pseudo = sanitizePseudo(req.params.pseudo);
+  const redisKey = keyFor(pseudo, req.params.key);
+  if (!pseudo || !redisKey) return res.status(400).json({ error: 'Requête invalide.' });
+  try {
+    await kvSet(redisKey, req.body ? req.body.value : null);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Erreur d\'écriture.' });
+  }
+});
+
+app.get('/api/week/:pseudo/:end', requireRedis, async (req, res) => {
+  const pseudo = sanitizePseudo(req.params.pseudo);
+  const end = req.params.end;
+  if (!pseudo || !DATE_RE.test(end)) return res.status(400).json({ error: 'Requête invalide.' });
+  try {
+    const endDate = new Date(end + 'T00:00:00Z');
+    const dates = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(endDate);
+      d.setUTCDate(d.getUTCDate() - i);
+      dates.push(d.toISOString().slice(0, 10));
+    }
+    const values = await Promise.all(dates.map(d => kvGet(`u:${pseudo}:day:${d}`)));
+    const out = {};
+    dates.forEach((d, i) => { if (values[i]) out[d] = values[i]; });
+    res.json({ days: out });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Erreur de lecture.' });
+  }
+});
 
 async function callGemini(body) {
   let lastErr;
