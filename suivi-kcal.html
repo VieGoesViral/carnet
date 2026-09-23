@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mon carnet kcal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EEF1EC; --surface:#FFFFFF; --ink:#1D2926; --muted:#5E6B66; --line:#D5DBD6;
+  --food:#C9791C; --food-soft:#F6E6CF; --burn:#2B7457; --burn-soft:#D5EBE0; --danger:#B2402F;
+  --radius-lg:18px; --radius-sm:10px;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#141A18; --surface:#1D2522; --ink:#E7EDE9; --muted:#9AA8A2; --line:#2E3935;
+    --food:#E8A04A; --food-soft:#3A2D1C; --burn:#5CC298; --burn-soft:#1D3A2E; --danger:#E6765F;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#141A18; --surface:#1D2522; --ink:#E7EDE9; --muted:#9AA8A2; --line:#2E3935;
+  --food:#E8A04A; --food-soft:#3A2D1C; --burn:#5CC298; --burn-soft:#1D3A2E; --danger:#E6765F;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5}
+main{max-width:1040px;margin:0 auto;padding:20px 18px 60px}
+h1,h2,h3{font-family:var(--display);margin:0;line-height:1.15}
+h2{font-size:1.35rem;font-weight:700}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--burn);outline-offset:2px}
+
+/* En-tête / navigation date */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:22px}
+.top h1{font-size:1.15rem;font-weight:800;letter-spacing:-.01em}
+.datenav{display:flex;align-items:center;gap:6px}
+.datenav button{border:1px solid var(--line);background:var(--surface);border-radius:999px;width:38px;height:38px;cursor:pointer;font-size:1.1rem}
+.datenav .today{width:auto;padding:0 14px;font-size:.9rem}
+.datenav input{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;height:38px}
+
+/* Bilan */
+.bilan{background:var(--surface);border-radius:var(--radius-lg);padding:26px 24px 22px;margin-bottom:22px}
+.bilan-date{color:var(--muted);font-size:.95rem;margin:0 0 4px}
+.net{font-family:var(--display);font-weight:800;font-size:clamp(3rem,11vw,5.6rem);line-height:.95;letter-spacing:-.03em;margin:0}
+.net small{font-size:.32em;font-weight:500;letter-spacing:0;margin-left:.2em;color:var(--muted)}
+.net-caption{margin:8px 0 22px;color:var(--muted)}
+.scale{display:grid;gap:12px}
+.row{display:grid;grid-template-columns:92px 1fr auto;align-items:center;gap:12px}
+.row .lbl{font-weight:700}
+.track{height:26px;background:var(--paper);border-radius:6px;position:relative;overflow:hidden}
+.fill{position:absolute;inset:0 auto 0 0;border-radius:6px;transition:width .4s ease}
+.fill.food{background:var(--food)} .fill.burn{background:var(--burn)}
+.fill.bmr{background:var(--burn);opacity:.35}
+.goal-mark{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink)}
+.row .val{font-variant-numeric:tabular-nums;font-weight:700;min-width:84px;text-align:right}
+.legend{margin-top:14px;font-size:.85rem;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:currentColor}
+.legend .l-bmr{color:color-mix(in srgb,var(--burn) 40%,transparent)} .legend .l-goal::before{width:2px;height:12px;background:var(--ink);border-radius:0}
+
+/* Colonnes */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:22px}
+@media (max-width:760px){.cols{grid-template-columns:1fr}}
+.panel{background:var(--surface);border-radius:var(--radius-lg);padding:20px}
+.panel header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
+.panel header .sum{font-weight:700;font-variant-numeric:tabular-nums}
+.panel.food header .sum{color:var(--food)} .panel.burn header .sum{color:var(--burn)}
+form{display:grid;gap:8px;margin-bottom:14px}
+.f-row{display:flex;gap:8px;flex-wrap:wrap}
+.f-row > *{flex:1 1 120px;min-width:0}
+label.fld{display:grid;gap:3px;font-size:.82rem;color:var(--muted)}
+input,select{border:1px solid var(--line);background:var(--paper);border-radius:var(--radius-sm);padding:9px 10px;width:100%;color:var(--ink)}
+.btn{border:0;border-radius:var(--radius-sm);padding:10px 14px;font-weight:700;cursor:pointer;color:#fff}
+.panel.food .btn{background:var(--food)} .panel.burn .btn{background:var(--burn)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn{color:#141A18}}
+:root[data-theme="dark"] .btn{color:#141A18}
+.hint{font-size:.8rem;color:var(--muted);margin:0}
+ul.list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+ul.list li{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--radius-sm)}
+.panel.food li{background:var(--food-soft)} .panel.burn li{background:var(--burn-soft)}
+li .tag{font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--surface)}
+li .name{overflow:hidden;text-overflow:ellipsis}
+li .name small{display:block;color:var(--muted);font-size:.8rem}
+li .k{font-weight:700;font-variant-numeric:tabular-nums}
+li .del{border:0;background:none;cursor:pointer;color:var(--muted);font-size:1.1rem;padding:2px 6px;border-radius:6px}
+li .del:hover{color:var(--danger)}
+.btn.ghost{background:transparent!important;color:var(--burn)!important;border:1.5px solid var(--burn)}
+.btn.ai{background:var(--ink)!important;color:var(--paper)!important}
+.btn:disabled{opacity:.5;cursor:wait}
+.exos{border:1px dashed var(--line);border-radius:var(--radius-sm);padding:10px;display:grid;gap:8px}
+.exos .fld-title{font-weight:700;font-size:.9rem;margin:0}
+ul.pending{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+ul.pending li{display:flex;justify-content:space-between;align-items:center;font-size:.9rem;background:var(--paper);border-radius:8px;padding:5px 8px}
+ul.pending button{border:0;background:none;color:var(--muted);cursor:pointer}
+.ai-note{font-size:.85rem;background:var(--paper);border-radius:8px;padding:8px 10px;margin:0}
+[hidden]{display:none!important}
+.empty{color:var(--muted);font-size:.92rem;padding:10px 0}
+
+/* Semaine */
+.week{background:var(--surface);border-radius:var(--radius-lg);padding:20px;margin-bottom:22px}
+.week header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:10px;flex-wrap:wrap}
+.chart-wrap{overflow-x:auto}
+.chart-wrap svg{display:block;min-width:520px;width:100%;height:auto}
+.week-stats{display:flex;gap:26px;flex-wrap:wrap;margin-top:10px;color:var(--muted);font-size:.9rem}
+.week-stats b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* Profil */
+details.profil{background:var(--surface);border-radius:var(--radius-lg);padding:16px 20px}
+details.profil summary{cursor:pointer;font-family:var(--display);font-weight:700;font-size:1.1rem}
+.p-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:14px}
+.check{display:flex;gap:8px;align-items:center;margin-top:12px}
+.check input{width:auto}
+.status{font-size:.8rem;color:var(--muted);text-align:right;margin-top:14px}
+@media (prefers-reduced-motion:reduce){.fill{transition:none}}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Mon carnet kcal</h1>
+    <div class="datenav">
+      <button id="prev" aria-label="Jour précédent">‹</button>
+      <input type="date" id="dateInput" aria-label="Choisir une date">
+      <button id="next" aria-label="Jour suivant">›</button>
+      <button id="today" class="today">Aujourd'hui</button>
+    </div>
+  </div>
+
+  <section class="bilan" aria-live="polite">
+    <p class="bilan-date" id="bilanDate"></p>
+    <p class="net" id="net">0<small>kcal</small></p>
+    <p class="net-caption" id="netCaption">Ajoute un repas ou une activité pour voir ton bilan.</p>
+    <div class="scale">
+      <div class="row">
+        <span class="lbl">Mangé</span>
+        <div class="track"><div class="fill food" id="barFood"></div><div class="goal-mark" id="goalMark" hidden></div></div>
+        <span class="val" id="valFood">0 kcal</span>
+      </div>
+      <div class="row">
+        <span class="lbl">Dépensé</span>
+        <div class="track"><div class="fill bmr" id="barBmr"></div><div class="fill burn" id="barBurn"></div></div>
+        <span class="val" id="valBurn">0 kcal</span>
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <div class="cols">
+    <section class="panel food">
+      <header><h2>Repas</h2><span class="sum" id="sumFood">0 kcal</span></header>
+      <form id="mealForm">
+        <div class="f-row">
+          <label class="fld">Moment
+            <select id="mealMoment">
+              <option>Petit-déj</option><option>Déjeuner</option><option>Dîner</option><option>Collation</option>
+            </select>
+          </label>
+          <label class="fld">Aliment ou plat<input id="mealName" placeholder="Pâtes bolo" required></label>
+        </div>
+        <div class="f-row">
+          <label class="fld">Calories (kcal)<input id="mealKcal" type="number" min="0" step="1" inputmode="numeric" placeholder="650" required></label>
+          <button class="btn" type="submit" style="align-self:end">Ajouter le repas</button>
+        </div>
+      </form>
+      <ul class="list" id="mealList"></ul>
+    </section>
+
+    <section class="panel burn">
+      <header><h2>Activités</h2><span class="sum" id="sumBurn">0 kcal</span></header>
+      <form id="actForm">
+        <div class="f-row">
+          <label class="fld">Type<select id="actType"></select></label>
+          <label class="fld" data-f="steps">Nombre de pas<input id="actSteps" type="number" min="0" inputmode="numeric" placeholder="8000"></label>
+          <label class="fld" data-f="dur">Durée (min)<input id="actDur" type="number" min="0" inputmode="numeric" placeholder="45"></label>
+          <label class="fld" data-f="dist">Distance (km)<input id="actDist" type="number" min="0" step="0.1" inputmode="decimal" placeholder="5"></label>
+          <label class="fld" data-f="label">Nom<input id="actLabel" placeholder="Tennis"></label>
+        </div>
+        <div class="f-row" data-f="newtype">
+          <label class="fld">Nom du nouveau type<input id="ntName" placeholder="Boxe, escalade, danse…"></label>
+          <button type="button" class="btn ghost" id="ntSave" style="align-self:end">Créer ce type</button>
+        </div>
+        <div class="exos" data-f="exos">
+          <p class="fld-title">Exercices de la séance</p>
+          <div class="f-row">
+            <label class="fld" style="flex:2 1 170px">Exercice<input id="exName" list="exList" placeholder="Développé couché" autocomplete="off"></label>
+            <label class="fld" style="flex:1 1 60px">Séries<input id="exSets" type="number" min="1" inputmode="numeric" placeholder="4"></label>
+            <label class="fld" style="flex:1 1 60px">Reps<input id="exReps" type="number" min="1" inputmode="numeric" placeholder="10"></label>
+            <label class="fld" style="flex:1 1 70px">Charge (kg)<input id="exLoad" type="number" min="0" step="0.5" inputmode="decimal" placeholder="60"></label>
+            <button type="button" class="btn ghost" id="exAdd" style="align-self:end;flex:0 0 auto">Ajouter</button>
+          </div>
+          <datalist id="exList"></datalist>
+          <ul class="pending" id="exPending"></ul>
+          <p class="hint">Un exercice que tu tapes pour la première fois est mémorisé pour les prochaines séances.</p>
+        </div>
+        <div class="f-row" data-f="submit">
+          <label class="fld">Calories dépensées (kcal)<input id="actKcal" type="number" min="0" step="1" inputmode="numeric" placeholder="Calcul auto"></label>
+          <button class="btn ai" type="button" id="aiBtn" style="align-self:end" hidden>Estimer avec l'IA</button>
+          <button class="btn" type="submit" style="align-self:end">Ajouter l'activité</button>
+        </div>
+        <p class="ai-note" id="aiNote" hidden></p>
+        <p class="hint" id="actHint"></p>
+      </form>
+      <ul class="list" id="actList"></ul>
+    </section>
+  </div>
+
+  <section class="week">
+    <header><h2>Les 7 derniers jours</h2><span class="hint">Barres : mangé / dépensé</span></header>
+    <div class="chart-wrap"><svg id="chart" viewBox="0 0 700 220" role="img" aria-label="Calories mangées et dépensées sur 7 jours"></svg></div>
+    <div class="week-stats" id="weekStats"></div>
+  </section>
+
+  <details class="profil" id="profil">
+    <summary>Mon profil et mes objectifs</summary>
+    <p class="hint" style="margin-top:8px">Ton poids sert à estimer les calories des activités. Taille, âge et sexe servent à calculer ton métabolisme de base (ce que ton corps brûle au repos).</p>
+    <div class="p-grid">
+      <label class="fld">Poids (kg)<input id="pWeight" type="number" min="30" max="250" step="0.1" inputmode="decimal"></label>
+      <label class="fld">Taille (cm)<input id="pHeight" type="number" min="120" max="230" inputmode="numeric"></label>
+      <label class="fld">Âge<input id="pAge" type="number" min="12" max="100" inputmode="numeric"></label>
+      <label class="fld">Sexe
+        <select id="pSex"><option value="h">Homme</option><option value="f">Femme</option></select>
+      </label>
+      <label class="fld">Objectif mangé / jour (kcal)<input id="pGoal" type="number" min="0" step="10" inputmode="numeric" placeholder="2400"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="pBmr"> Compter le métabolisme de base dans les dépenses (<span id="bmrVal">—</span> kcal/jour)</label>
+    <p class="status" id="status">Chargement…</p>
+  </details>
+</main>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const fmt = n => Math.round(n).toLocaleString('fr-FR');
+  const iso = d => { const z = new Date(d.getTime() - d.getTimezoneOffset()*60000); return z.toISOString().slice(0,10); };
+  const parseIso = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+  const addDays = (s, n) => { const d = parseIso(s); d.setDate(d.getDate()+n); return iso(d); };
+
+  const TYPES = {
+    pas:{label:'Pas', fields:['steps'], met:null},
+    course:{label:'Course', fields:['dur','dist'], met:9.8},
+    salle:{label:'Salle / muscu', fields:['exos','dur'], met:5},
+    marche:{label:'Marche', fields:['dur','dist'], met:3.5},
+    velo:{label:'Vélo', fields:['dur','dist'], met:7.5},
+    natation:{label:'Natation', fields:['dur'], met:7},
+    autre:{label:'Autre', fields:['label','dur'], met:null}
+  };
+  const DEFAULT_EXOS=['Développé couché','Développé incliné','Squat','Soulevé de terre','Presse à cuisses','Fentes','Tractions','Rowing barre','Tirage vertical','Développé militaire','Élévations latérales','Curl biceps','Extensions triceps','Dips','Hip thrust','Mollets','Gainage','Crunchs','Tapis de course','Vélo elliptique','Rameur'];
+  function allTypes(){
+    const t={...TYPES};
+    (state.profile.customTypes||[]).forEach(c=>{ t[c.id]={label:c.label, fields:['dur','dist'], met:null, custom:true}; });
+    t.__new={label:'+ Nouveau type…', fields:['newtype']};
+    return t;
+  }
+  const typeOf=k=>allTypes()[k]||{label:k,fields:['dur'],met:null};
+  let pendingExos=[];
+
+  let state = {
+    date: iso(new Date()),
+    profile: {weight:70, height:175, age:23, sex:'h', goal:'', bmr:false, customTypes:[], exos:[]},
+    day: {meals:[], acts:[]},
+    history: {}
+  };
+
+  // ---------- Stockage : base de l'artifact (privée) sinon navigateur ----------
+  let db = null, uid = null, mode = 'local';
+  const LS = {
+    get(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } },
+    set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+  };
+  const profileRef = () => db.doc('data/users/'+uid+'/profile');
+  const daysCol = () => profileRef().collection('days');
+
+  async function loadProfile(){
+    if(mode==='db'){ const s = await profileRef().get(); if(s.exists) Object.assign(state.profile, s.data()); }
+    else { const p = LS.get('kcal:profile'); if(p) Object.assign(state.profile, p); }
+  }
+  async function saveProfile(){
+    if(mode==='db'){ try{ await profileRef().set({...state.profile}); }catch(e){ setStatus('Échec de la sauvegarde du profil.'); } }
+    else LS.set('kcal:profile', state.profile);
+  }
+  async function loadDay(date){
+    if(state.history[date]) return clone(state.history[date]);
+    if(mode==='db'){
+      const s = await daysCol().doc(date).get();
+      return s.exists ? {meals:s.data().meals||[], acts:s.data().acts||[]} : {meals:[], acts:[]};
+    }
+    return LS.get('kcal:day:'+date) || {meals:[], acts:[]};
+  }
+  async function loadWeek(end){
+    const start = addDays(end, -6);
+    if(mode==='db'){
+      try{
+        const q = await daysCol().where('date','>=',start).where('date','<=',end).get();
+        q.docs.forEach(d => { const v=d.data(); state.history[v.date] = {meals:v.meals||[], acts:v.acts||[]}; });
+      }catch(e){}
+    } else {
+      for(let i=0;i<7;i++){ const k=addDays(start,i); const v=LS.get('kcal:day:'+k); if(v) state.history[k]=v; }
+    }
+  }
+  let saveTimer = null;
+  function saveDay(){
+    const date = state.date, data = clone(state.day);
+    state.history[date] = data;
+    clearTimeout(saveTimer);
+    setStatus('Enregistrement…');
+    saveTimer = setTimeout(async () => {
+      if(mode==='db'){
+        try{ await daysCol().doc(date).set({date, meals:data.meals, acts:data.acts}); setStatus(savedMsg()); }
+        catch(e){ setStatus(e && e.code==='quota_exceeded' ? 'Espace plein : supprime d\'anciennes journées.' : 'Échec de l\'enregistrement, réessaie.'); }
+      } else { LS.set('kcal:day:'+date, data); setStatus(savedMsg()); }
+    }, 500);
+  }
+  const savedMsg = () => mode==='db' ? 'Enregistré dans ton carnet' : 'Enregistré sur cet appareil';
+  const clone = o => JSON.parse(JSON.stringify(o));
+  function setStatus(t){ $('status').textContent = t; }
+
+  // ---------- Calculs ----------
+  function bmr(){
+    const p = state.profile; const w=+p.weight, h=+p.height, a=+p.age;
+    if(!w||!h||!a) return 0;
+    return 10*w + 6.25*h - 5*a + (p.sex==='f' ? -161 : 5);
+  }
+  function estimate(type, steps, dur, dist){
+    const w = +state.profile.weight || 70;
+    if(type==='pas') return steps ? steps * w * 0.00055 : 0;
+    if(type==='course' && dist) return dist * w * 1.0;
+    if(type==='marche' && dist && !dur) return dist * w * 0.55;
+    if(type==='velo' && dist && !dur) return dist * w * 0.28;
+    if(type==='salle' && !dur && pendingExos.length){ const sets=pendingExos.reduce((a,x)=>a+(+x.sets||3),0); dur=sets*2.5; }
+    const m = typeOf(type).met;
+    return (m && dur) ? m * w * (dur/60) : 0;
+  }
+  const totals = d => ({
+    food: d.meals.reduce((s,m)=>s+(+m.kcal||0),0),
+    acts: d.acts.reduce((s,a)=>s+(+a.kcal||0),0)
+  });
+
+  // ---------- Rendu ----------
+  function render(){
+    const d = parseIso(state.date);
+    const label = d.toLocaleDateString('fr-FR',{weekday:'long', day:'numeric', month:'long'});
+    const isToday = state.date === iso(new Date());
+    $('bilanDate').textContent = (isToday ? "Aujourd'hui, " : '') + label;
+    $('dateInput').value = state.date;
+    $('next').disabled = isToday;
+
+    const t = totals(state.day);
+    const base = state.profile.bmr ? bmr() : 0;
+    const burn = t.acts + base;
+    const net = t.food - burn;
+    const goal = +state.profile.goal || 0;
+
+    $('net').innerHTML = (net>0?'+':net<0?'−':'') + fmt(Math.abs(net)) + '<small>kcal</small>';
+    let cap;
+    if(!t.food && !t.acts) cap = 'Ajoute un repas ou une activité pour voir ton bilan.';
+    else if(state.profile.bmr) cap = net>0 ? 'Surplus : tu as mangé plus que tu n\'as dépensé.' : net<0 ? 'Déficit : tu as dépensé plus que tu n\'as mangé.' : 'Équilibre parfait.';
+    else cap = 'Mangé moins dépensé par les activités (métabolisme de base non compté).';
+    if(goal && t.food) cap += goal - t.food >= 0 ? ` Il reste ${fmt(goal - t.food)} kcal avant ton objectif.` : ` Objectif dépassé de ${fmt(t.food - goal)} kcal.`;
+    $('netCaption').textContent = cap;
+
+    const max = Math.max(t.food, burn, goal, 1) * 1.08;
+    $('barFood').style.width = (t.food/max*100)+'%';
+    $('barBmr').style.width = (burn/max*100)+'%';
+    $('barBurn').style.width = (t.acts/max*100)+'%';
+    $('valFood').textContent = fmt(t.food)+' kcal';
+    $('valBurn').textContent = fmt(burn)+' kcal';
+    const gm = $('goalMark');
+    if(goal){ gm.hidden=false; gm.style.left = (goal/max*100)+'%'; } else gm.hidden=true;
+    let lg = '';
+    if(state.profile.bmr) lg += `<span class="l-bmr">Métabolisme de base ${fmt(base)} kcal</span>`;
+    if(goal) lg += `<span class="l-goal">Objectif ${fmt(goal)} kcal</span>`;
+    $('legend').innerHTML = lg;
+
+    $('sumFood').textContent = fmt(t.food)+' kcal';
+    $('sumBurn').textContent = fmt(t.acts)+' kcal';
+
+    renderList($('mealList'), state.day.meals, m => [m.moment, m.name, ''], 'meals', 'Aucun repas noté pour ce jour.');
+    renderList($('actList'), state.day.acts, a => [typeOf(a.type).label, a.name || typeOf(a.type).label, actDetail(a)], 'acts', 'Aucune activité notée pour ce jour.');
+    renderChart();
+    $('bmrVal').textContent = bmr() ? fmt(bmr()) : '—';
+  }
+  function actDetail(a){
+    const p=[]; if(a.steps) p.push(fmt(a.steps)+' pas'); if(a.dur) p.push(a.dur+' min'); if(a.dist) p.push(String(a.dist).replace('.',',')+' km');
+    if(a.exos&&a.exos.length) p.push(a.exos.map(x=>x.name+(x.sets&&x.reps?` ${x.sets}×${x.reps}`:'')+(x.load?` @${x.load}kg`:'')).join(' · '));
+    return p.join(', ');
+  }
+  function renderList(ul, items, cols, key, emptyTxt){
+    ul.innerHTML='';
+    if(!items.length){ const li=document.createElement('li'); li.className='empty'; li.style.background='none'; li.textContent=emptyTxt; ul.appendChild(li); return; }
+    items.forEach((it,i)=>{
+      const [tag,name,sub] = cols(it);
+      const li=document.createElement('li');
+      const tg=document.createElement('span'); tg.className='tag'; tg.textContent=tag;
+      const nm=document.createElement('span'); nm.className='name'; nm.textContent=name;
+      if(sub){ const s=document.createElement('small'); s.textContent=sub; nm.appendChild(s); }
+      const k=document.createElement('span'); k.className='k'; k.textContent=fmt(it.kcal)+' kcal';
+      const del=document.createElement('button'); del.className='del'; del.textContent='×'; del.setAttribute('aria-label','Supprimer '+name);
+      del.onclick=()=>{ state.day[key].splice(i,1); saveDay(); render(); };
+      li.append(tg,nm,k,del); ul.appendChild(li);
+    });
+  }
+  function renderChart(){
+    const svg=$('chart'); const W=700,H=220,pad={l:44,r:10,t:14,b:34};
+    const days=[...Array(7)].map((_,i)=>addDays(state.date,i-6));
+    const base = state.profile.bmr ? bmr() : 0;
+    const data=days.map(k=>{ const d = k===state.date ? state.day : state.history[k]; const t = d ? totals(d) : {food:0,acts:0}; const has = d && (d.meals.length||d.acts.length); return {k, food:t.food, burn: has ? t.acts+base : 0}; });
+    const max=Math.max(1, ...data.map(d=>Math.max(d.food,d.burn)), +state.profile.goal||0)*1.1;
+    const cw=(W-pad.l-pad.r)/7, bw=Math.min(22,cw/3.2), y=v=>pad.t+(H-pad.t-pad.b)*(1-v/max);
+    const css=getComputedStyle(document.documentElement);
+    const c=n=>css.getPropertyValue(n).trim();
+    let s='';
+    const step = max>4000?1000:max>2000?500:250;
+    for(let v=0; v<=max; v+=step){ s+=`<line x1="${pad.l}" x2="${W-pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="${c('--line')}" stroke-width="1"/><text x="${pad.l-6}" y="${y(v)+4}" text-anchor="end" font-size="11" fill="${c('--muted')}">${fmt(v)}</text>`; }
+    const goal=+state.profile.goal;
+    if(goal) s+=`<line x1="${pad.l}" x2="${W-pad.r}" y1="${y(goal)}" y2="${y(goal)}" stroke="${c('--ink')}" stroke-dasharray="4 4" stroke-width="1.2"/>`;
+    data.forEach((d,i)=>{
+      const cx=pad.l+cw*i+cw/2;
+      s+=`<rect x="${cx-bw-2}" y="${y(d.food)}" width="${bw}" height="${y(0)-y(d.food)}" rx="3" fill="${c('--food')}"><title>${fmt(d.food)} kcal mangées</title></rect>`;
+      s+=`<rect x="${cx+2}" y="${y(d.burn)}" width="${bw}" height="${y(0)-y(d.burn)}" rx="3" fill="${c('--burn')}"><title>${fmt(d.burn)} kcal dépensées</title></rect>`;
+      const lab=parseIso(d.k).toLocaleDateString('fr-FR',{weekday:'short',day:'numeric'});
+      s+=`<text x="${cx}" y="${H-12}" text-anchor="middle" font-size="12" font-weight="${d.k===state.date?700:400}" fill="${d.k===state.date?c('--ink'):c('--muted')}">${lab}</text>`;
+    });
+    svg.innerHTML=s;
+    const filled=data.filter(d=>d.food||d.burn);
+    const avgF=filled.length?filled.reduce((a,d)=>a+d.food,0)/filled.length:0;
+    const avgB=filled.length?filled.reduce((a,d)=>a+d.burn,0)/filled.length:0;
+    const stepsTot=days.reduce((a,k)=>{const d=k===state.date?state.day:state.history[k]; return a+(d?d.acts.reduce((x,t)=>x+(+t.steps||0),0):0);},0);
+    $('weekStats').innerHTML = filled.length
+      ? `<span>Moyenne mangée <b>${fmt(avgF)} kcal</b></span><span>Moyenne dépensée <b>${fmt(avgB)} kcal</b></span><span>Pas cumulés <b>${fmt(stepsTot)}</b></span><span>Jours remplis <b>${filled.length}/7</b></span>`
+      : '<span>Tes 7 derniers jours s\'afficheront ici au fil de tes saisies.</span>';
+  }
+
+  // ---------- Formulaire activité ----------
+  let kcalTouched=false;
+  function syncActFields(){
+    const t=$('actType').value, T=typeOf(t);
+    const f=t==='__new'?['newtype']:[...T.fields,'submit'];
+    document.querySelectorAll('#actForm [data-f]').forEach(el=>{ el.hidden = !f.includes(el.dataset.f); });
+    $('actHint').textContent = t==='__new' ? 'Donne un nom : le type restera dans ta liste.'
+      : (!T.met && t!=='pas') ? (sampleApi ? 'Indique une durée puis clique sur « Estimer avec l\'IA », ou tape les calories de ta montre.' : 'Indique les calories toi-même (montre, appli…).')
+      : `Estimation à partir de ton poids (${state.profile.weight||70} kg). Tu peux corriger la valeur.`;
+    updateEstimate();
+  }
+  function updateEstimate(){
+    if(kcalTouched) return;
+    const t=$('actType').value;
+    const e=estimate(t, +$('actSteps').value, +$('actDur').value, +$('actDist').value);
+    $('actKcal').value = e ? Math.round(e) : '';
+  }
+  function buildTypeSelect(sel){
+    const T=allTypes(); const s=$('actType'); const cur=sel||s.value||'pas';
+    s.innerHTML=''; Object.entries(T).forEach(([k,v])=>{ const o=document.createElement('option'); o.value=k; o.textContent=v.label==='Pas'?'Pas (podomètre)':v.label; s.appendChild(o); });
+    s.value=T[cur]?cur:'pas';
+    const dl=$('exList'); dl.innerHTML='';
+    [...new Set([...(state.profile.exos||[]),...DEFAULT_EXOS])].forEach(n=>{ const o=document.createElement('option'); o.value=n; dl.appendChild(o); });
+  }
+  function renderPending(){
+    const ul=$('exPending'); ul.innerHTML='';
+    pendingExos.forEach((x,i)=>{ const li=document.createElement('li'); const sp=document.createElement('span');
+      sp.textContent=x.name+(x.sets&&x.reps?` — ${x.sets}×${x.reps}`:'')+(x.load?` à ${x.load} kg`:'');
+      const b=document.createElement('button'); b.type='button'; b.textContent='×'; b.setAttribute('aria-label','Retirer '+x.name);
+      b.onclick=()=>{ pendingExos.splice(i,1); renderPending(); updateEstimate(); }; li.append(sp,b); ul.appendChild(li); });
+  }
+  $('exAdd').onclick=()=>{
+    const name=$('exName').value.trim(); if(!name){ $('exName').focus(); return; }
+    pendingExos.push({name, sets:+$('exSets').value||'', reps:+$('exReps').value||'', load:+$('exLoad').value||''});
+    const known=[...(state.profile.exos||[]),...DEFAULT_EXOS].some(n=>n.toLowerCase()===name.toLowerCase());
+    if(!known){ state.profile.exos=[...(state.profile.exos||[]),name]; saveProfile(); buildTypeSelect(); }
+    ['exName','exSets','exReps','exLoad'].forEach(id=>$(id).value=''); $('exName').focus();
+    renderPending(); updateEstimate();
+  };
+  $('exName').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('exAdd').click(); } });
+  $('ntSave').onclick=()=>{
+    const label=$('ntName').value.trim(); if(!label){ $('ntName').focus(); return; }
+    const id='c_'+label.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-').slice(0,30)+'-'+Date.now().toString(36);
+    state.profile.customTypes=[...(state.profile.customTypes||[]),{id,label}];
+    saveProfile(); $('ntName').value=''; buildTypeSelect(id); kcalTouched=false; syncActFields();
+  };
+
+  // ---------- IA (Claude) ----------
+  let sampleApi=null;
+  $('aiBtn').onclick=async()=>{
+    const t=$('actType').value, T=typeOf(t), p=state.profile;
+    const desc={activite: t==='autre'?($('actLabel').value.trim()||'Autre'):T.label,
+      duree_min:+$('actDur').value||null, distance_km:+$('actDist').value||null, pas:+$('actSteps').value||null,
+      exercices: t==='salle'?pendingExos:undefined};
+    if(!desc.duree_min && !desc.distance_km && !desc.pas && !(desc.exercices&&desc.exercices.length)){ $('actHint').textContent='Ajoute au moins une durée, une distance ou des exercices avant de demander une estimation.'; return; }
+    const prompt=`Tu estimes la dépense énergétique d'une activité physique (calories brûlées pendant l'activité, en kcal, métabolisme de repos inclus comme dans les tables MET usuelles).
+Personne : ${p.weight||70} kg${p.age?', '+p.age+' ans':''}${p.sex?', '+(p.sex==='f'?'femme':'homme'):''}.
+Activité : ${JSON.stringify(desc)}.
+Si la durée manque pour une séance de musculation, déduis-la raisonnablement des séries (environ 2 à 3 min par série repos compris).
+Réponds uniquement en JSON : {"kcal": entier, "explication": "une phrase courte en français qui dit sur quoi repose l'estimation"}`;
+    const btn=$('aiBtn'); btn.disabled=true; btn.textContent='Estimation…'; $('aiNote').hidden=true;
+    try{
+      const r=await sampleApi.json(prompt,{modelTier:'quick'});
+      const k=Math.round(+r.kcal);
+      if(k>0){ $('actKcal').value=k; kcalTouched=true; }
+      $('aiNote').textContent=(r.explication||'')+' Tu peux ajuster la valeur.'; $('aiNote').hidden=false;
+    }catch(e){
+      const msg={not_granted:'L\'accès à l\'IA a été refusé pour cette page.',rate_limited:'Trop de demandes d\'un coup : réessaie dans un moment.',cancelled:''}[e&&e.code];
+      $('aiNote').textContent = msg ?? 'L\'estimation n\'a pas abouti. Réessaie ou tape les calories toi-même.'; $('aiNote').hidden=!$('aiNote').textContent;
+      if(e&&e.code==='not_granted'){ sampleApi=null; btn.hidden=true; }
+    }finally{ btn.disabled=false; btn.textContent='Estimer avec l\'IA'; }
+  };
+
+  $('actType').onchange=()=>{ kcalTouched=false; $('aiNote').hidden=true; syncActFields(); };
+  ['actSteps','actDur','actDist'].forEach(id=>$(id).oninput=updateEstimate);
+  $('actKcal').oninput=()=>{ kcalTouched = $('actKcal').value!==''; };
+
+  $('actForm').onsubmit=e=>{
+    e.preventDefault();
+    const t=$('actType').value, kcal=+$('actKcal').value;
+    const a={type:t, kcal: kcal||0};
+    if(TYPES[t].fields.includes('steps') && +$('actSteps').value) a.steps=+$('actSteps').value;
+    if(TYPES[t].fields.includes('dur') && +$('actDur').value) a.dur=+$('actDur').value;
+    if(TYPES[t].fields.includes('dist') && +$('actDist').value) a.dist=+$('actDist').value;
+    if(t==='autre') a.name=$('actLabel').value.trim()||'Autre';
+    if(t==='salle' && pendingExos.length) a.exos=pendingExos.slice();
+    if(!a.kcal && !a.steps && !a.dur && !a.dist && !a.exos){ $('actHint').textContent='Renseigne au moins une durée, une distance, des pas ou des calories.'; return; }
+    state.day.acts.push(a);
+    ['actSteps','actDur','actDist','actLabel','actKcal'].forEach(id=>$(id).value='');
+    pendingExos=[]; renderPending(); $('aiNote').hidden=true;
+    kcalTouched=false; syncActFields(); saveDay(); render();
+  };
+  $('mealForm').onsubmit=e=>{
+    e.preventDefault();
+    const name=$('mealName').value.trim(), kcal=+$('mealKcal').value;
+    if(!name || !(kcal>=0)) return;
+    state.day.meals.push({moment:$('mealMoment').value, name, kcal});
+    $('mealName').value=''; $('mealKcal').value=''; $('mealName').focus();
+    saveDay(); render();
+  };
+
+  // ---------- Profil ----------
+  function fillProfile(){
+    const p=state.profile;
+    $('pWeight').value=p.weight||''; $('pHeight').value=p.height||''; $('pAge').value=p.age||'';
+    $('pSex').value=p.sex||'h'; $('pGoal').value=p.goal||''; $('pBmr').checked=!!p.bmr;
+  }
+  let profTimer=null;
+  function onProfile(){
+    state.profile={ weight:+$('pWeight').value||'', height:+$('pHeight').value||'', age:+$('pAge').value||'', sex:$('pSex').value, goal:+$('pGoal').value||'', bmr:$('pBmr').checked, customTypes:state.profile.customTypes||[], exos:state.profile.exos||[] };
+    clearTimeout(profTimer); profTimer=setTimeout(saveProfile,600);
+    syncActFields(); render();
+  }
+  ['pWeight','pHeight','pAge','pSex','pGoal','pBmr'].forEach(id=>{ $(id).addEventListener('input',onProfile); $(id).addEventListener('change',onProfile); });
+
+  // ---------- Navigation date ----------
+  async function goTo(date){
+    if(date > iso(new Date())) date = iso(new Date());
+    state.date=date;
+    state.day=await loadDay(date);
+    await loadWeek(date);
+    render();
+  }
+  $('prev').onclick=()=>goTo(addDays(state.date,-1));
+  $('next').onclick=()=>goTo(addDays(state.date,1));
+  $('today').onclick=()=>goTo(iso(new Date()));
+  $('dateInput').onchange=e=>{ if(e.target.value) goTo(e.target.value); };
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',render);
+
+  // ---------- Démarrage ----------
+  buildTypeSelect(); fillProfile(); syncActFields(); render();
+  (async ()=>{
+    try{
+      if(window.claude && typeof window.claude.use==='function'){
+        const [d,u]=await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+        const id = u ? await u.id() : null;
+        if(d && id){ db=d; uid=id; mode='db'; }
+        window.claude.use('sample').then(sa=>{ if(sa){ sampleApi=sa; $('aiBtn').hidden=false; syncActFields(); } }).catch(()=>{});
+      }
+    }catch(e){ mode='local'; }
+    try{ await loadProfile(); }catch(e){}
+    buildTypeSelect(); fillProfile(); syncActFields();
+    await goTo(state.date);
+    setStatus(mode==='db' ? 'Tes données sont privées et gardées dans ton carnet.' : 'Tes données sont gardées dans ce navigateur.');
+  })();
+})();
+</script>
+</body>
+</html>
