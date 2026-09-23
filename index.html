@@ -74,7 +74,9 @@ form{display:grid;gap:8px;margin-bottom:14px}
 .f-row{display:flex;gap:8px;flex-wrap:wrap}
 .f-row > *{flex:1 1 120px;min-width:0}
 label.fld{display:grid;gap:3px;font-size:.82rem;color:var(--muted)}
-input,select{border:1px solid var(--line);background:var(--paper);border-radius:var(--radius-sm);padding:9px 10px;width:100%;color:var(--ink)}
+input,select,textarea{border:1px solid var(--line);background:var(--paper);border-radius:var(--radius-sm);padding:9px 10px;width:100%;color:var(--ink)}
+textarea{resize:vertical;min-height:60px}
+.panel.journal{margin-bottom:20px}
 .btn{border:0;border-radius:var(--radius-sm);padding:10px 14px;font-weight:700;cursor:pointer;color:#fff}
 .panel.food .btn{background:var(--food)} .panel.burn .btn{background:var(--burn)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn{color:#141A18}}
@@ -148,6 +150,17 @@ details.profil summary{cursor:pointer;font-family:var(--display);font-weight:700
       </div>
     </div>
     <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="panel journal">
+    <header><h2>Journal libre ✨</h2></header>
+    <form id="journalForm">
+      <textarea id="journalText" rows="3" placeholder="Écris simplement ce que tu as mangé ou fait, ex : « pâtes bolo et une part de tarte, puis 30 min de course »"></textarea>
+      <div class="f-row">
+        <button class="btn" type="submit" id="journalBtn">✨ Remplir avec l'IA</button>
+      </div>
+      <p class="hint" id="journalStatus"></p>
+    </form>
   </section>
 
   <div class="cols">
@@ -565,6 +578,53 @@ Réponds uniquement en JSON : {"kcal": entier, "explication": "une phrase courte
   $('today').onclick=()=>goTo(iso(new Date()));
   $('dateInput').onchange=e=>{ if(e.target.value) goTo(e.target.value); };
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',render);
+
+  $('journalForm').onsubmit = async (e)=>{
+    e.preventDefault();
+    const text = $('journalText').value.trim();
+    const jStatus = $('journalStatus');
+    if(!text){ jStatus.textContent = 'Écris d\'abord ce que tu as mangé ou fait.'; return; }
+    jStatus.textContent = 'Analyse en cours…';
+    $('journalBtn').disabled = true;
+    try{
+      const r = await fetch('/api/journal-parse', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ text })
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.error || 'Erreur inconnue.');
+      const items = data.items || [];
+      if(!items.length){ jStatus.textContent = 'Je n\'ai rien reconnu dans ce texte, essaie de préciser.'; return; }
+
+      let nbMeals=0, nbActs=0;
+      items.forEach(it=>{
+        if(it.kind==='meal'){
+          state.day.meals.push({moment: it.moment, name: it.name, kcal: it.kcal});
+          nbMeals++;
+        } else if(it.kind==='activity'){
+          const a = { type: it.type, kcal: it.kcal||0 };
+          if(it.steps) a.steps = it.steps;
+          if(it.dur) a.dur = it.dur;
+          if(it.dist) a.dist = it.dist;
+          if(it.type==='autre') a.name = it.label || 'Autre';
+          if(!a.kcal){ a.kcal = estimate(it.type, a.steps||0, a.dur||0, a.dist||0); }
+          state.day.acts.push(a);
+          nbActs++;
+        }
+      });
+      saveDay(); render();
+      $('journalText').value='';
+      const parts=[];
+      if(nbMeals) parts.push(nbMeals+' repas');
+      if(nbActs) parts.push(nbActs+' activité(s)');
+      jStatus.textContent = 'Ajouté : '+parts.join(' et ')+'.';
+    }catch(err){
+      jStatus.textContent = 'Erreur : '+err.message;
+    }finally{
+      $('journalBtn').disabled = false;
+    }
+  };
 
   $('aiEstimateBtn').onclick = async ()=>{
     const name = $('mealName').value.trim();
