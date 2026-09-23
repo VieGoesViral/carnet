@@ -128,21 +128,28 @@ app.post('/api/estimate-kcal', async (req, res) => {
   if (!name) return res.status(400).json({ error: 'Nom du plat manquant.' });
   if (!GEMINI_API_KEY) return res.status(500).json({ error: 'Clé API non configurée sur le serveur.' });
 
-  const prompt = `Tu es un nutritionniste. Donne une estimation du nombre de calories (kcal) pour une portion normale de : "${name}". Réponds UNIQUEMENT avec un nombre entier, sans texte ni unité.`;
+  const prompt = `Tu es un nutritionniste. Pour une portion normale de : "${name}", estime les calories et les macronutriments.
+Réponds STRICTEMENT en JSON, sans markdown : {"kcal": entier, "prot": grammes entiers de protéines, "gluc": grammes entiers de glucides, "lip": grammes entiers de lipides}`;
 
   try {
-    const r = await callGemini({ contents: [{ parts: [{ text: prompt }] }] });
+    const r = await callGemini({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json' }
+    });
     if (!r) return res.status(502).json({ error: 'Erreur lors de l\'appel à l\'IA.' });
 
     const data = await r.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const kcal = parseInt(text.replace(/[^\d]/g, ''), 10);
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch (e) { parsed = {}; }
 
+    const kcal = parseInt(parsed.kcal, 10);
     if (!Number.isFinite(kcal) || kcal <= 0) {
       return res.status(502).json({ error: 'Réponse IA invalide.' });
     }
+    const g = v => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 0 ? n : 0; };
 
-    res.json({ kcal });
+    res.json({ kcal, prot: g(parsed.prot), gluc: g(parsed.gluc), lip: g(parsed.lip) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erreur serveur.' });
@@ -159,12 +166,12 @@ app.post('/api/journal-parse', async (req, res) => {
 
   const prompt = `Tu es l'assistant d'un carnet de suivi calorique. L'utilisateur décrit librement, en français, ce qu'il a mangé et/ou fait comme activité physique. Extrait chaque élément distinct et réponds STRICTEMENT avec un JSON (rien d'autre, pas de markdown) au format :
 {"items":[
-  {"kind":"meal","moment":"Petit-déj|Déjeuner|Dîner|Collation","name":"...","kcal":123},
+  {"kind":"meal","moment":"Petit-déj|Déjeuner|Dîner|Collation","name":"...","kcal":123,"prot":12,"gluc":45,"lip":8},
   {"kind":"activity","type":"pas|course|salle|marche|velo|natation|autre","label":"...","steps":0,"dur":0,"dist":0,"kcal":0}
 ]}
 Règles :
 - "kind" vaut "meal" pour un aliment/repas, "activity" pour du sport/de l'exercice.
-- Pour un repas, estime un nombre de kcal réaliste pour une portion normale ; choisis "moment" selon le contexte (par défaut "Collation" si inconnu).
+- Pour un repas, estime un nombre de kcal réaliste pour une portion normale, ainsi que les macronutriments en grammes entiers (prot = protéines, gluc = glucides, lip = lipides) ; choisis "moment" selon le contexte (par défaut "Collation" si inconnu).
 - Pour une activité, choisis le "type" le plus proche parmi la liste, remplis steps/dur (minutes)/dist (km) si mentionnés, sinon laisse à 0. Ne remplis "kcal" pour une activité que si aucune autre info (durée/distance/pas) n'est disponible pour l'estimer ; sinon laisse kcal à 0. "label" uniquement utile si type="autre" (nom de l'activité).
 - N'invente pas d'éléments qui ne sont pas mentionnés.
 - Si le texte est incompréhensible ou vide de sens, renvoie {"items":[]}.
@@ -190,7 +197,8 @@ Texte de l'utilisateur : "${text}"`;
         const name = (it.name || '').toString().trim();
         if (!name || !Number.isFinite(kcal) || kcal <= 0) return null;
         const moment = MOMENTS.includes(it.moment) ? it.moment : 'Collation';
-        return { kind: 'meal', moment, name, kcal };
+        const g = v => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 0 ? n : 0; };
+        return { kind: 'meal', moment, name, kcal, prot: g(it.prot), gluc: g(it.gluc), lip: g(it.lip) };
       }
       if (it.kind === 'activity') {
         const type = ACTIVITY_TYPES.includes(it.type) ? it.type : 'autre';
