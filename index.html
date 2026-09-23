@@ -77,6 +77,8 @@ label.fld{display:grid;gap:3px;font-size:.82rem;color:var(--muted)}
 input,select,textarea{border:1px solid var(--line);background:var(--paper);border-radius:var(--radius-sm);padding:9px 10px;width:100%;color:var(--ink)}
 textarea{resize:vertical;min-height:60px}
 .panel.journal{margin-bottom:20px}
+.panel.coach{margin-top:20px}
+.panel.coach #coachText{color:var(--ink);line-height:1.5;white-space:pre-line}
 .btn{border:0;border-radius:var(--radius-sm);padding:10px 14px;font-weight:700;cursor:pointer;color:#fff}
 .panel.food .btn{background:var(--food)} .panel.burn .btn{background:var(--burn)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn{color:#141A18}}
@@ -224,6 +226,11 @@ details.profil summary{cursor:pointer;font-family:var(--display);font-weight:700
     </section>
   </div>
 
+  <section class="panel coach">
+    <header><h2>Coach sportif 🏆</h2><span class="hint" id="coachStatus"></span></header>
+    <p id="coachText" class="hint">Ajoute un repas ou une activité pour recevoir l'analyse de ton coach.</p>
+  </section>
+
   <section class="week">
     <header><h2>Les 7 derniers jours</h2><span class="hint">Barres : mangé / dépensé</span></header>
     <div class="chart-wrap"><svg id="chart" viewBox="0 0 700 220" role="img" aria-label="Calories mangées et dépensées sur 7 jours"></svg></div>
@@ -329,10 +336,45 @@ details.profil summary{cursor:pointer;font-family:var(--display);font-weight:700
         catch(e){ setStatus(e && e.code==='quota_exceeded' ? 'Espace plein : supprime d\'anciennes journées.' : 'Échec de l\'enregistrement, réessaie.'); }
       } else { LS.set('kcal:day:'+date, data); setStatus(savedMsg()); }
     }, 500);
+    scheduleCoach();
   }
   const savedMsg = () => mode==='db' ? 'Enregistré dans ton carnet' : 'Enregistré sur cet appareil';
   const clone = o => JSON.parse(JSON.stringify(o));
   function setStatus(t){ $('status').textContent = t; }
+
+  // ---------- Coach sportif ----------
+  let coachTimer = null;
+  function scheduleCoach(){
+    clearTimeout(coachTimer);
+    const d = state.day;
+    if(!d.meals.length && !d.acts.length){
+      $('coachText').textContent = "Ajoute un repas ou une activité pour recevoir l'analyse de ton coach.";
+      $('coachStatus').textContent = '';
+      return;
+    }
+    $('coachStatus').textContent = 'Analyse en cours…';
+    coachTimer = setTimeout(runCoach, 1200);
+  }
+  async function runCoach(){
+    const d = state.day;
+    try{
+      const r = await fetch('/api/coach-analysis', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          meals: d.meals, acts: d.acts,
+          goal: +state.profile.goal || 0,
+          bmr: state.profile.bmr ? Math.round(bmr()) : 0
+        })
+      });
+      const data = await r.json();
+      if(!r.ok) throw new Error(data.error || 'Erreur inconnue.');
+      $('coachText').textContent = data.analysis;
+      $('coachStatus').textContent = 'Mis à jour à ' + new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    }catch(e){
+      $('coachStatus').textContent = "Analyse indisponible (" + e.message + ")";
+    }
+  }
 
   // ---------- Calculs ----------
   function bmr(){
@@ -572,6 +614,7 @@ Réponds uniquement en JSON : {"kcal": entier, "explication": "une phrase courte
     state.day=await loadDay(date);
     await loadWeek(date);
     render();
+    scheduleCoach();
   }
   $('prev').onclick=()=>goTo(addDays(state.date,-1));
   $('next').onclick=()=>goTo(addDays(state.date,1));

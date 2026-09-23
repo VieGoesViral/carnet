@@ -12,7 +12,7 @@ async function callGemini(body) {
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
     const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${GEMINI_API_KEY}`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
     );
     if (r.ok) return r;
@@ -110,6 +110,55 @@ Texte de l'utilisateur : "${text}"`;
     }).filter(Boolean);
 
     res.json({ items: clean });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur.' });
+  }
+});
+
+app.post('/api/coach-analysis', async (req, res) => {
+  const { meals, acts, goal, bmr } = req.body || {};
+  if (!GEMINI_API_KEY) return res.status(500).json({ error: 'Clé API non configurée sur le serveur.' });
+  if ((!Array.isArray(meals) || !meals.length) && (!Array.isArray(acts) || !acts.length)) {
+    return res.status(400).json({ error: 'Aucune donnée à analyser.' });
+  }
+
+  const mealsList = (meals || []).map(m => `- ${m.moment}: ${m.name} (${m.kcal} kcal)`).join('\n') || 'Aucun repas enregistré.';
+  const actsList = (acts || []).map(a => {
+    const parts = [];
+    if (a.steps) parts.push(`${a.steps} pas`);
+    if (a.dur) parts.push(`${a.dur} min`);
+    if (a.dist) parts.push(`${a.dist} km`);
+    const label = a.name || a.type;
+    return `- ${label}${parts.length ? ' (' + parts.join(', ') + ')' : ''} : ${a.kcal || 0} kcal brûlées`;
+  }).join('\n') || 'Aucune activité enregistrée.';
+
+  const prompt = `Prompt Coach Sportif : tu es un coach sportif et nutritionnel bienveillant, jamais culpabilisant. Voici le journal de la journée d'un utilisateur.
+
+Repas :
+${mealsList}
+
+Activités :
+${actsList}
+
+${goal ? `Objectif de l'utilisateur : ${goal} kcal mangées/jour.` : ''}
+${bmr ? `Métabolisme de base estimé : ${bmr} kcal/jour.` : ''}
+
+Rédige une courte analyse (4 à 6 phrases, en français, tutoiement, ton motivant) qui :
+1. Résume l'équilibre de la journée (alimentation vs dépense physique).
+2. Relève un point positif.
+3. Donne un conseil concret et réaliste pour la suite de la journée ou pour demain.
+Ne liste pas les repas un par un, fais une vraie synthèse. Pas de markdown, texte brut uniquement.`;
+
+  try {
+    const r = await callGemini({ contents: [{ parts: [{ text: prompt }] }] });
+    if (!r) return res.status(502).json({ error: 'Erreur lors de l\'appel à l\'IA.' });
+
+    const data = await r.json();
+    const text = (data?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+    if (!text) return res.status(502).json({ error: 'Réponse IA vide.' });
+
+    res.json({ analysis: text });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erreur serveur.' });
